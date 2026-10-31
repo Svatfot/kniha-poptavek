@@ -655,7 +655,7 @@ $("form").addEventListener("submit",async e=>{
   const data=formData();
   if(!data.names&&!data.email&&!data.ig&&!data.phone){showErr("Vyplň aspoň jméno nebo jeden kontakt.");return}
   showErr("");const btn=$("btnSave");btn.disabled=true;btn.textContent="Ukládám…";
-  try{rows=await apiSave(data);closeSheet();render();toast("Uloženo")}
+  try{rows=await apiSave(data);closeSheet();render();toast("Uloženo");await autoLose()}
   catch(err){showErr("Uložení se nepovedlo. "+dbErr(err))}
   finally{btn.disabled=false;btn.textContent="Uložit"}
 });
@@ -833,22 +833,40 @@ function render(){
 }
 
 /* ---------- automatický přesun do Ztraceno ---------- */
+// Od kdy se počítá měsíc bez úpravy. U poptávky, kterou jsi po vložení ještě neupravil,
+// se bere datum, kdy přišla, takže starší poptávky vložené zpětně se posoudí hned.
+function lastTouch(r){
+  const u=Date.parse(r.updatedAt),c=Date.parse(r.createdAt);
+  if(isNaN(u))return NaN;
+  const neverEdited=!isNaN(c)&&Math.abs(u-c)<5*60000;
+  if(neverEdited&&r.received){const rec=fromISO(r.received).getTime();if(rec<u)return rec}
+  return u;
+}
 function daysToLost(r){
-  if(!AUTO_LOST_STAGES.includes(r.stage||"nova")||!r.updatedAt)return null;
-  const left=AUTO_LOST_DAYS-Math.floor((Date.now()-Date.parse(r.updatedAt))/864e5);
-  return isNaN(left)?null:left;
+  if(!AUTO_LOST_STAGES.includes(r.stage||"nova"))return null;
+  const t=lastTouch(r);if(isNaN(t))return null;
+  return AUTO_LOST_DAYS-Math.floor((Date.now()-t)/864e5);
+}
+// Proč má poptávka přejít do Ztraceno, nebo null
+function lostReason(r){
+  const st=r.stage||"nova";
+  if(CLOSED.has(st))return null;
+  if(r.date&&r.date<todayISO())return"datum svatby už proběhlo";
+  const d=daysToLost(r);
+  if(d!=null&&d<=0)return AUTO_LOST_DAYS+" dní bez úpravy";
+  return null;
 }
 function updateStageInfo(){
   const el=$("stageInfo"),st=$("stage").value;
-  if(AUTO_LOST_STAGES.includes(st))el.textContent="Když poptávku "+AUTO_LOST_DAYS+" dní neupravíš, sama se přesune do Ztraceno.";
-  else el.textContent="";
+  if(CLOSED.has(st)){el.textContent="";return}
+  el.textContent=(AUTO_LOST_STAGES.includes(st)?"Když poptávku "+AUTO_LOST_DAYS+" dní neupravíš, sama se přesune do Ztraceno. ":"")+"Po datu svatby se neuzavřená poptávka přesune do Ztraceno.";
 }
 $("stage").addEventListener("change",updateStageInfo);
 async function autoLose(){
-  const stale=rows.filter(r=>{const d=daysToLost(r);return d!=null&&d<=0});
+  const stale=rows.filter(r=>lostReason(r));
   let n=0;
   for(const r of stale){
-    const note=(r.note?r.note+"\n":"")+"Automaticky přesunuto do Ztraceno "+fmtDate(todayISO())+" ("+AUTO_LOST_DAYS+" dní bez úpravy, předtím "+STAGE_LABEL[r.stage||"nova"]+").";
+    const note=(r.note?r.note+"\n":"")+"Automaticky přesunuto do Ztraceno "+fmtDate(todayISO())+" ("+lostReason(r)+", předtím "+STAGE_LABEL[r.stage||"nova"]+").";
     try{await apiSave({...r,stage:"ztraceno",note});n++}catch(e){}
   }
   if(n){render();toast(n+" "+pl(n,"poptávka přesunuta","poptávky přesunuty","poptávek přesunuto")+" do Ztraceno")}
