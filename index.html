@@ -627,7 +627,7 @@ function applyParse(){
 $("btnParse").addEventListener("click",applyParse);
 $("raw").addEventListener("paste",()=>setTimeout(applyParse,0));
 function recalcBudget(){if(!budgetManual){const b=parseBudget($("budgetText").value,$("lang").value);$("budget").value=b==null?"":b}}
-$("budgetText").addEventListener("input",recalcBudget);
+$("budgetText").addEventListener("input",()=>{budgetManual=false;recalcBudget()});
 $("lang").addEventListener("change",recalcBudget);
 $("budget").addEventListener("input",()=>{budgetManual=true});
 $("heardText").addEventListener("input",()=>{if(!heardTouched)$("heard").value=mapHeard($("heardText").value)});
@@ -799,6 +799,7 @@ function renderStats(base){
   let h=breakdownTable("Odkud se o mně dozvěděli",heardOf,HEARD,"heard",base);
   h+=breakdownTable("Rozpočet snoubenců",r=>bucketOf(r.budget),BUDGET_BUCKETS.map(b=>[b[0],b[1]]),"bucket",base);
   h+='<p class="hint">Úspěšnost počítá jen uzavřené poptávky: uzavřené svatby děleno (uzavřené + ztracené). Kliknutím na řádek tabulky nastavíš filtr.</p>';
+  h+='<div class="block"><h2>Přepočet rozpočtů</h2><p class="hint">Znovu spočítá „Rozpočet v Kč“ u všech poptávek z textu, který snoubenci napsali. Hodí se po změně kurzu. Čísla, která jsi zadal ručně, se přepíšou.</p><div class="toolbar"><button type="button" id="btnRecalc" class="secondary">Přepočítat všechny rozpočty</button><span id="recalcInfo" class="hint"></span></div></div>';
   const basis=$("basis").value,months={};
   for(const r of base){const v=(basis==="date"?r.date:r.received)||"";if(!v)continue;const k=v.slice(0,7);(months[k]=months[k]||{n:0,w:0}).n++;if(r.stage==="uzavreno")months[k].w++}
   const keys=Object.keys(months).sort().slice(-24);
@@ -811,7 +812,17 @@ function renderStats(base){
   }
   $("viewStats").innerHTML=h;
 }
-$("viewStats").addEventListener("click",e=>{
+$("viewStats").addEventListener("click",async e=>{
+  const rb=e.target.closest("#btnRecalc");
+  if(rb){
+    const changes=rows.filter(r=>r.budgetText&&parseBudget(r.budgetText,r.lang)!==(r.budget??null));
+    const info=$("recalcInfo");
+    if(!changes.length){info.textContent="Všechny rozpočty už odpovídají textu.";return}
+    if(!rb.classList.contains("armed")){rb.classList.add("armed");rb.textContent="Opravdu přepočítat "+changes.length+" "+pl(changes.length,"poptávku","poptávky","poptávek")+"?";return}
+    rb.disabled=true;rb.textContent="Přepočítávám…";let n=0;
+    for(const r of changes){try{await apiSave({...r,budget:parseBudget(r.budgetText,r.lang)});n++}catch(err){}}
+    render();toast("Přepočítáno: "+n+" "+pl(n,"poptávka","poptávky","poptávek"));return;
+  }
   const tr=e.target.closest("tr[data-heard],tr[data-bucket]");if(!tr)return;
   if(tr.dataset.heard)$("fHeard").value=tr.dataset.heard;
   if(tr.dataset.bucket)$("fBudget").value=tr.dataset.bucket;
