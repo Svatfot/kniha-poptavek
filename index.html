@@ -372,13 +372,13 @@ const COLMAP={received:"received",names:"names",email:"email",phone:"phone",ig:"
   price:"price",followUp:"follow_up",lang:"lang",message:"message",note:"note"};
 const DATE_COLS=new Set(["received","date","followUp"]),NUM_COLS=new Set(["budget","price"]);
 function toDb(o){const r={};for(const [k,c] of Object.entries(COLMAP)){let v=o[k];
-  if(DATE_COLS.has(k))v=v||null;else if(NUM_COLS.has(k))v=(v===""||v==null||isNaN(v))?null:Math.round(Number(v));else v=v==null?"":String(v);
+  if(DATE_COLS.has(k))v=v||null;else if(NUM_COLS.has(k))v=(v===""||v==null||isNaN(v))?null:Math.round(Number(v));else v=v==null?"":plainText(String(v));
   r[c]=v}return r}
 function fromDb(r){const o={id:r.id,createdAt:r.created_at||""};for(const [k,c] of Object.entries(COLMAP)){const v=r[c];
   o[k]=NUM_COLS.has(k)?(v==null?null:Number(v)):(v==null?"":String(v))}return o}
 function dbErr(e){const m=e&&e.message?e.message:"";
   if(/JWT|session|not authenticated/i.test(m))return"Přihlášení vypršelo. Odhlas se a přihlas znovu.";
-  if(/fetch|network/i.test(m))return"Nepodařilo se spojit s databází. Zkontroluj připojení.";
+  if(/fetch|network|load failed/i.test(m))return"Spojení s databází se nepovedlo. Zkus to znovu, případně vypni blokátor obsahu pro tuto stránku.";
   return m||"Zkus to znovu."}
 async function apiList(){
   let all=[],from=0;
@@ -461,9 +461,15 @@ function findDates(s,loose,past){
   if(loose)for(const m of n.matchAll(/\b(\d{1,2})\.\s*(\d{1,2})\.(?!\s*\d)/g))push(m.index,mk(0,+m[2],+m[1],past));
   return res.sort((a,b)=>a.i-b.i);
 }
+function plainText(t){
+  if(!t)return t;
+  return String(t).replace(/<br\s*\/?>/gi,"\n").replace(/<\/p>/gi,"\n").replace(/<[^>]*>/g,"")
+    .replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"‹").replace(/&gt;/g,"›").replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/[<>]/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n");
+}
 const EMAIL_RE=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const OWN=/no-?reply|mailer-daemon|wordpress@/i;
-const cleanEmail=v=>((v.match(EMAIL_RE)||[]).filter(e=>!OWN.test(e))[0]||"");
+const cleanEmail=v=>{const mt=v.match(/mailto:([^)\s>"']+)/i);if(mt&&!OWN.test(mt[1]))return mt[1];return((v.match(EMAIL_RE)||[]).filter(e=>!OWN.test(e))[0]||"")};
 function findPhone(t){const m=t.match(/(?:\+|00)\d{1,3}[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{3,4}|\b\d{3}[\s-]?\d{3}[\s-]?\d{3}\b/);return m?m[0].trim():""}
 function findIg(t){let m=t.match(/instagram\.com\/([a-z0-9._]{2,30})/i);if(m)return"@"+m[1];m=t.match(/(?:^|[\s(,])@([a-z0-9._]{2,30})\b/i);return m?"@"+m[1]:""}
 function findBudgetText(t){
@@ -513,6 +519,7 @@ function mapHeard(text){
 }
 
 function parseText(text){
+  text=plainText(text);
   const out={};let labeled=0;const lines=text.replace(/\r/g,"").split("\n");let cur=null;
   const assign=(k,v)=>{v=(v||"").trim();if(!v)return;labeled++;
     if(k==="names"&&out.names){if(!norm(out.names).includes(norm(v)))out.names+=" a "+v}
