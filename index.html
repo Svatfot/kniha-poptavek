@@ -348,6 +348,7 @@ const HEARD = [
   ["google","Google"],
   ["doporuceni-klienti","Doporučení od klientů a známých"],
   ["doporuceni-misto","Doporučení od místa nebo dodavatele"],
+  ["jina-svatba","Potkali mě na jiné svatbě"],
   ["facebook","Facebook"],
   ["portal","Svatební portál nebo katalog"],
   ["jine","Jinak"],
@@ -526,12 +527,13 @@ function bucketOf(v){
 function mapHeard(text){
   if(!text||!text.trim())return"neuvedeno";
   const n=norm(text);
+  if(/\bna (\S+ )?(\S+ )?svatbe\b|\bze svatby\b|\b(at|on) (\S+ )?(\S+ )?wedding\b|wedding guest|jiny svatb|jine svatb/.test(n))return"jina-svatba";
   if(/instagram|\big\b|insta/.test(n))return"instagram";
   if(/doporuc|referenc|recommend|referral|poradil|tip od/.test(n)){
     if(/mist|hotel|zamek|zamku|majitel|koordinator|planner|agentur|dodavatel|florist|kvetin|catering|kapel|\bdj\b|kamerama|videograf|fotograf|venue|chateau|statek|farm|resort/.test(n))return"doporuceni-misto";
     return"doporuceni-klienti";
   }
-  if(/kamarad|znam|pratel|friend|rodin|svatb.*byl|byli jsme na svatbe/.test(n))return"doporuceni-klienti";
+  if(/kamarad|znam|pratel|friend|rodin/.test(n))return"doporuceni-klienti";
   if(/google|hledan|vyhledav|search|seznam\.cz|internet/.test(n))return"google";
   if(/facebook|\bfb\b/.test(n))return"facebook";
   if(/portal|katalog|svatebni web|mojesvatba|svatbacz|beremese|directory/.test(n))return"portal";
